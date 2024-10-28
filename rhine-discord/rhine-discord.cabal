@@ -1,0 +1,77 @@
+cabal-version:       3.0
+name:                rhine-discord
+version:             0.1.0
+synopsis:            Discord frontend for Rhine
+homepage:            https://github.com/ners/rhine-chat/blob/master/rhine-discord
+license:             Apache-2.0
+license-file:        LICENCE.md
+author:              ners
+maintainer:          ners@gmx.ch
+bug-reports:         https://github.com/ners/rhine-chat/issues
+category:            System
+build-type:          Simple
+extra-source-files:  CHANGELOG.md, README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/ners/rhine-chat
+
+common common
+    default-language: GHC2021
+    ghc-options:
+        -Weverything
+        -Wno-unsafe
+        -Wno-missing-safe-haskell-mode
+        -Wno-missing-export-lists
+        -Wno-missing-import-lists
+        -Wno-missing-kind-signatures
+        -Wno-all-missed-specialisations
+    default-extensions:
+        Arrows
+        ApplicativeDo
+        DataKinds
+        DefaultSignatures
+        DeriveAnyClass
+        DeriveGeneric
+        DerivingStrategies
+        DerivingVia
+        ExplicitNamespaces
+        NoImplicitPrelude
+        OverloadedLabels
+        OverloadedRecordDot
+        OverloadedStrings
+        RecordWildCards
+        RecursiveDo
+        TypeFamilies
+        ViewPatterns
+    build-depends:
+        base >= 4 && < 5,
+        discord-haskell,
+        rhine,
+        text,
+
+library
+    import:           common
+    hs-source-dirs:   src
+    build-depends:
+        transformers,
+        unliftio,
+    other-modules:
+    exposed-modules:
+        FRP.Rhine.Discord
+
+executable example
+    import:           common
+    hs-source-dirs:   example
+    main-is:          Main.hs
+    ghc-options:      -O2 -threaded
+    build-depends:
+        containers,
+        dhall,
+        generic-lens,
+        lens,
+        mtl,
+        random,
+        random-fu,
+        rhine-discord,
+        rvar,
