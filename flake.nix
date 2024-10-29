@@ -49,11 +49,21 @@
           (cabalProjectPackages root);
       project = hsSrc ./.;
       pnames = cabalProjectPnames project;
-      hpsFor = pkgs: with lib;
-        { default = pkgs.haskellPackages; }
-        // filterAttrs
-          (name: hp: match "ghc[0-9]{2}" name != null && versionAtLeast hp.ghc.version "9.6")
-          pkgs.haskell.packages;
+      ghcsFor = pkgs: with lib; foldlAttrs
+        (acc: name: hp:
+          let
+            version = getVersion hp.ghc;
+            majorMinor = versions.majorMinor version;
+            ghcName = "ghc${replaceStrings ["."] [""] majorMinor}";
+            newAcc = acc // { ${ghcName} = hp; };
+          in
+          if ! hp ? ghc || hp ? ${ghcName} || versionOlder version "9.6" || versionAtLeast version "9.10"
+          then acc
+          else newAcc
+        )
+        { }
+        pkgs.haskell.packages;
+      hpsFor = pkgs: { default = pkgs.haskellPackages; } // ghcsFor pkgs;
       overlay = lib.composeManyExtensions [
         inputs.rhine.overlays.default
         (final: prev: {
