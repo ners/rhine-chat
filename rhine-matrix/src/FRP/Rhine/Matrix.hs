@@ -31,17 +31,18 @@ instance (MonadIO m) => Clock m MatrixClock where
             clock :: Automaton m () (Time MatrixClock, Tag MatrixClock)
             clock = concatS . feedback Nothing $ proc ((), since) -> do
                 syncResult <- arrM sync' -< since
-                timestamp <- constM (liftIO getCurrentTime) -< ()
                 case syncResult of
-                    Left _ -> returnA -< ([], since)
-                    Right result -> do
-                        let events =
-                                [ (timestamp, (roomId, event))
-                                | (roomId, events') <- getTimelines result
-                                , event <- NonEmpty.toList events'
-                                ]
-                            nextSince = pure $ srNextBatch result
-                        returnA -< (events, nextSince)
+                    Right result
+                        | timelines <- getTimelines result
+                        , not (null timelines) -> do
+                            timestamp <- constM (liftIO getCurrentTime) -< ()
+                            let events =
+                                    [ (timestamp, (roomId, event))
+                                    | (roomId, events') <- timelines
+                                    , event <- NonEmpty.toList events'
+                                    ]
+                            returnA -< (events, Just result.srNextBatch)
+                    _ -> returnA -< ([], since)
         (clock,) <$> getCurrentTime
 
 instance GetClockProxy MatrixClock
