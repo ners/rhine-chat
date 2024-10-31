@@ -72,77 +72,159 @@
               prev.haskell.packageOverrides
               (cabalProjectOverlay project)
               (hfinal: hprev: {
-                bindings-libv4l2 = lib.pipe hprev.bindings-libv4l2 [
-                  markUnbroken
-                  doJailbreak
-                  (addPkgconfigDepend prev.libv4l.dev)
-                ];
-                i3ipc = doJailbreak (markUnbroken hprev.i3ipc);
-                ioctl = hfinal.callCabal2nix "ioctl" inputs.ioctl { };
-                v4l2 = doJailbreak hprev.v4l2;
               })
             ];
           };
         })
       ];
 
-      synapseConfig = { pkgs, modulesPath, ... }: {
-        imports = [
-          "${modulesPath}/virtualisation/qemu-vm.nix"
-        ];
-        config = {
-          virtualisation = {
-            graphics = false;
-            forwardPorts = [
-              { from = "host"; host.port = 2222; guest.port = 22; }
-              { from = "host"; host.port = 8008; guest.port = 8008; }
-              { from = "host"; host.port = 8009; guest.port = 8009; }
-            ];
-          };
-          services.openssh = {
-            enable = true;
-            permitRootLogin = "yes";
-          };
-          users.mutableUsers = false;
-          users.extraUsers.root.password = "root";
-          networking.firewall.enable = false;
-
-
-          services.matrix-synapse = {
-            enable = true;
-            settings = {
-              server_name = "synapse.test";
-              database.name = "sqlite3";
-              listeners = [{
-                port = 8008;
-                bind_addresses = [ "0.0.0.0" ];
-                type = "http";
-                tls = false;
-                x_forwarded = true;
-                resources = [
-                  {
-                    names = [ "client" ];
-                    compress = true;
-                  }
-                  {
-                    names = [ "federation" ];
-                    compress = false;
-                  }
-                ];
-              }];
+      synapseConfig = { modulesPath, config, pkgs, ... }:
+        let
+          dendritePort = 8009;
+          synapsePort = 8008;
+          synapseHost = "http://${config.networking.fqdn}:${toString synapsePort}";
+          synapseSharedSecret = "foo";
+        in
+        {
+          imports = [
+            "${modulesPath}/virtualisation/qemu-vm.nix"
+          ];
+          config = {
+            networking = {
+              hostName = "synapse";
+              domain = "test";
             };
-          };
+            virtualisation = {
+              graphics = false;
+              diskSize = 10000;
+              forwardPorts = [
+                { from = "host"; host.port = 2222; guest.port = 22; }
+                { from = "host"; host.port = synapsePort; guest.port = synapsePort; }
+                { from = "host"; host.port = dendritePort; guest.port = dendritePort; }
+              ];
+            };
+            services.openssh = {
+              enable = true;
+              permitRootLogin = "yes";
+            };
+            users.mutableUsers = false;
+            users.defaultUserShell = pkgs.fish;
+            users.extraUsers.root.password = "root";
+            networking.firewall.enable = false;
 
-          services.dendrite = {
-            enable = true;
-            httpPort = 8009;
-            settings = {
-              global.server_name = "dendrite.test";
-              global.private_key = ./dendrite_key.pem;
+            environment.systemPackages = with pkgs; [
+              dendrite
+              matrix-synapse
+              matrix-commander
+            ];
+
+            nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
+            programs.neovim = {
+              enable = true;
+              defaultEditor = true;
+              viAlias = true;
+              vimAlias = true;
+            };
+
+            programs.fish.enable = true;
+            programs.starship.enable = true;
+
+            services.matrix-synapse = {
+              enable = true;
+              settings = {
+                server_name = config.networking.fqdn;
+                database.name = "sqlite3";
+                listeners = [{
+                  port = synapsePort;
+                  bind_addresses = [ "0.0.0.0" ];
+                  type = "http";
+                  tls = false;
+                  x_forwarded = true;
+                  resources = [
+                    {
+                      names = [ "client" ];
+                      compress = true;
+                    }
+                    {
+                      names = [ "federation" ];
+                      compress = false;
+                    }
+                  ];
+                }];
+              };
+              extraConfigFiles = [
+                (pkgs.writeTextFile {
+                  name = "registration_secret.yml";
+                  text = ''
+                    registration_shared_secret: "${synapseSharedSecret}"
+                  '';
+                })
+              ];
+            };
+
+            services.getty.autologinUser = "root";
+
+            systemd.services.initSynapse = {
+              wantedBy = [ "multi-user.target" ];
+              requires = [ "matrix-synapse.service" ];
+              after = [ "matrix-synapse.service" ];
+              serviceConfig = {
+                Type = "oneshot";
+                WorkingDirectory = "/root";
+              };
+              path = config.environment.systemPackages;
+              script = ''
+                register_new_matrix_user \
+                  --admin \
+                  -u admin \
+                  -p admin123 \
+                  -k ${synapseSharedSecret} \
+                  ${synapseHost} \
+                  || true
+
+                register_new_matrix_user \
+                  --no-admin \
+                  -u bot \
+                  -p bot123 \
+                  -k ${synapseSharedSecret} \
+                  ${synapseHost} \
+                  || true
+
+                matrix-commander \
+                  --login password \
+                  --homeserver ${synapseHost} \
+                  --user-login admin \
+                  --password admin123 \
+                  --room-default lounge \
+                  --device matrix-commander || true
+
+                matrix-commander \
+                  --login password \
+                  --homeserver ${synapseHost} \
+                  --user-login bot \
+                  --password bot123 \
+                  --room-default lounge \
+                  --device matrix-commander \
+                  --store bot-store \
+                  --credentials bot-credentials.json || true
+
+                matrix-commander --room-create lounge
+
+                matrix-commander --message "Hello world!"
+              '';
+            };
+
+            services.dendrite = {
+              enable = true;
+              httpPort = dendritePort;
+              settings = {
+                global.server_name = "dendrite.test";
+                global.private_key = ./dendrite_key.pem;
+              };
             };
           };
         };
-      };
     in
     {
       overlays.default = overlay;
@@ -151,7 +233,11 @@
     foreach inputs.nixpkgs.legacyPackages
       (system: pkgs':
         let
-          pkgs = pkgs'.extend overlay;
+          pkgs = import inputs.nixpkgs {
+            inherit system;
+            overlays = [overlay];
+            config.permittedInsecurePackages = ["olm-3.2.16"];
+          };
           hps = hpsFor pkgs;
           name = "rhine-chat";
           libs = pkgs.buildEnv {
@@ -180,7 +266,7 @@
           legacyPackages.${system} = pkgs;
           packages.${system} = {
             default = all;
-            launchSynapse = (pkgs'.nixos synapseConfig).vm;
+            synapseVM = (pkgs.nixos synapseConfig).vm;
           };
           devShells.${system} = foreach hps (ghcName: hp: {
             ${ghcName} = hp.shellFor {
@@ -189,6 +275,8 @@
                 pkgs'.haskellPackages.cabal-install
                 fourmolu
                 haskell-language-server
+                pkgs.gomuks
+                pkgs.nheko
               ];
             };
           });

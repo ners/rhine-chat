@@ -45,15 +45,26 @@ common common
         RecursiveDo
         TypeFamilies
         ViewPatterns
+    build-depends:
+        base >= 4 && < 5,
+        matrix-client,
+        rhine,
 
 library
     import:           common
     hs-source-dirs:   src
     build-depends:
-        base >= 4 && < 5,
-        matrix-client,
-        rhine,
         time,
     other-modules:
     exposed-modules:
         FRP.Rhine.Matrix
+
+executable example
+    import:           common
+    hs-source-dirs:   example
+    main-is:          Main.hs
+    ghc-options:      -O2 -threaded
+    build-depends:
+        dhall,
+        rhine-matrix,
+        text,

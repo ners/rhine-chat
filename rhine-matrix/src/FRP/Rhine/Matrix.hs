@@ -10,14 +10,16 @@ import Network.Matrix.Client
     , RoomEvent
     , RoomID
     , getTimelines
+    , retry
     , srNextBatch
     , sync
     )
 import Prelude
 
 data MatrixClock = MatrixClock
-    { getSession :: IO ClientSession
-    , getFilter :: IO (Maybe FilterID)
+    { session :: ClientSession
+    , filterId :: Maybe FilterID
+    , presence :: Maybe Presence
     }
 
 instance (MonadIO m) => Clock m MatrixClock where
@@ -25,24 +27,20 @@ instance (MonadIO m) => Clock m MatrixClock where
     type Tag MatrixClock = (RoomID, RoomEvent)
     initClock :: MatrixClock -> RunningClockInit m (Time MatrixClock) (Tag MatrixClock)
     initClock MatrixClock{..} = liftIO do
-        session <- getSession
-        filter' <- getFilter
-        let sync' since = liftIO $ sync session filter' since (Just Online) Nothing
+        let sync' since = liftIO . retry $ sync session filterId since (Just Online) (Just 10_000)
             clock :: Automaton m () (Time MatrixClock, Tag MatrixClock)
             clock = concatS . feedback Nothing $ proc ((), since) -> do
                 syncResult <- arrM sync' -< since
+                timestamp <- constM (liftIO getCurrentTime) -< ()
                 case syncResult of
-                    Right result
-                        | timelines <- getTimelines result
-                        , not (null timelines) -> do
-                            timestamp <- constM (liftIO getCurrentTime) -< ()
-                            let events =
-                                    [ (timestamp, (roomId, event))
-                                    | (roomId, events') <- timelines
-                                    , event <- NonEmpty.toList events'
-                                    ]
-                            returnA -< (events, Just result.srNextBatch)
-                    _ -> returnA -< ([], since)
+                    Right result ->
+                        let events =
+                                [ (timestamp, (roomId, event))
+                                | (roomId, events') <- getTimelines result
+                                , event <- NonEmpty.toList events'
+                                ]
+                         in returnA -< (events, Just result.srNextBatch)
+                    Left _ -> returnA -< ([], since)
         (clock,) <$> getCurrentTime
 
 instance GetClockProxy MatrixClock
