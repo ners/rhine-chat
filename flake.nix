@@ -85,6 +85,64 @@
           };
         })
       ];
+
+      synapseConfig = { pkgs, modulesPath, ... }: {
+        imports = [
+          "${modulesPath}/virtualisation/qemu-vm.nix"
+        ];
+        config = {
+          virtualisation = {
+            graphics = false;
+            forwardPorts = [
+              { from = "host"; host.port = 2222; guest.port = 22; }
+              { from = "host"; host.port = 8008; guest.port = 8008; }
+              { from = "host"; host.port = 8009; guest.port = 8009; }
+            ];
+          };
+          services.openssh = {
+            enable = true;
+            permitRootLogin = "yes";
+          };
+          users.mutableUsers = false;
+          users.extraUsers.root.password = "root";
+          networking.firewall.enable = false;
+
+
+          services.matrix-synapse = {
+            enable = true;
+            settings = {
+              server_name = "synapse.test";
+              database.name = "sqlite3";
+              listeners = [{
+                port = 8008;
+                bind_addresses = [ "0.0.0.0" ];
+                type = "http";
+                tls = false;
+                x_forwarded = true;
+                resources = [
+                  {
+                    names = [ "client" ];
+                    compress = true;
+                  }
+                  {
+                    names = [ "federation" ];
+                    compress = false;
+                  }
+                ];
+              }];
+            };
+          };
+
+          services.dendrite = {
+            enable = true;
+            httpPort = 8009;
+            settings = {
+              global.server_name = "dendrite.test";
+              global.private_key = ./dendrite_key.pem;
+            };
+          };
+        };
+      };
     in
     {
       overlays.default = overlay;
@@ -120,7 +178,10 @@
         {
           formatter.${system} = pkgs.nixpkgs-fmt;
           legacyPackages.${system} = pkgs;
-          packages.${system}.default = all;
+          packages.${system} = {
+            default = all;
+            launchSynapse = (pkgs'.nixos synapseConfig).vm;
+          };
           devShells.${system} = foreach hps (ghcName: hp: {
             ${ghcName} = hp.shellFor {
               packages = ps: map (pname: ps.${pname}) pnames;
