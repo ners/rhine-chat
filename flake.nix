@@ -10,6 +10,7 @@
       url = "github:turion/rhine";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs = inputs:
@@ -21,9 +22,9 @@
         else if isAttrs xs then mapAttrsToList f xs
         else throw "foreach: expected list or attrset but got ${typeOf xs}"
       );
-      hsSrc = root: with lib.fileset; toSource {
+      sourceFilter = root: with lib.fileset; toSource {
         inherit root;
-        fileset = fileFilter (file: any file.hasExt [ "cabal" "hs" "md" ]) ./.;
+        fileset = fileFilter (file: any file.hasExt [ "cabal" "hs" "hsc" "lock" "md" "rs" "toml" ]) root;
       };
       readDirs = root: attrNames (lib.filterAttrs (_: type: type == "directory") (readDir root));
       readFiles = root: attrNames (lib.filterAttrs (_: type: type == "regular") (readDir root));
@@ -47,7 +48,7 @@
         mapAttrs
           (pname: path: hfinal.callCabal2nix pname path { })
           (cabalProjectPackages root);
-      project = hsSrc ./.;
+      project = sourceFilter ./.;
       pnames = cabalProjectPnames project;
       ghcsFor = pkgs: with lib; foldlAttrs
         (acc: name: hp:
@@ -66,13 +67,19 @@
       hpsFor = pkgs: { default = pkgs.haskellPackages; } // ghcsFor pkgs;
       overlay = lib.composeManyExtensions [
         inputs.rhine.overlays.default
-        (final: prev: {
+        (_: prev: let
+          crane = inputs.crane.mkLib prev;
+          src = sourceFilter ./vodozemac;
+          strictDeps = true;
+          cargoArtifacts = crane.buildDepsOnly { inherit src strictDeps; };
+        in {
+          vodozemac_hs = crane.buildPackage { inherit src strictDeps cargoArtifacts; };
+        })
+        (_: prev: {
           haskell = prev.haskell // {
             packageOverrides = with prev.haskell.lib.compose; lib.composeManyExtensions [
               prev.haskell.packageOverrides
               (cabalProjectOverlay project)
-              (hfinal: hprev: {
-              })
             ];
           };
         })
@@ -277,6 +284,7 @@
                 haskell-language-server
                 pkgs.gomuks
                 pkgs.nheko
+                pkgs.cargo
               ];
             };
           });

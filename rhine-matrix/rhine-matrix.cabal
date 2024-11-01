@@ -49,6 +49,7 @@ common common
         base >= 4 && < 5,
         matrix-client,
         rhine,
+        vodozemac,
 
 library
     import:           common
