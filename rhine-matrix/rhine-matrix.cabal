@@ -70,8 +70,11 @@ executable example
     ghc-options:      -O2 -threaded
     build-depends:
         aeson >= 2.2,
+        aeson-pretty,
         bytestring,
+        containers,
         dhall,
+        extra,
         http-client,
         rhine-matrix,
         text,

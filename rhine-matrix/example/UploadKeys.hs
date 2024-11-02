@@ -7,15 +7,21 @@ import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Aeson.RFC8785
 import Data.Aeson.Types (listValue)
+import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as LazyByteString
-import Data.Maybe (fromJust)
 import Data.Text (Text)
-import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
+import Debug.Trace (traceShowM)
 import Network.HTTP.Client qualified as HTTP
 import Network.Matrix.Client
-import Vodozemac qualified
+import Vodozemac.Account qualified
+import Vodozemac.Account qualified as Vodozemac (Account)
+import Vodozemac.Curve25519PublicKey qualified
+import Vodozemac.Ed25519PublicKey qualified
+import Vodozemac.Ed25519Signature qualified
+import Vodozemac.FallbackKey qualified as Vodozemac (FallbackKey (..))
+import Vodozemac.KeyId qualified
 import Prelude
-import Debug.Trace (traceShowM)
 
 newtype SignedObject = SignedObject Object
     deriving newtype (ToJSON)
@@ -30,16 +36,16 @@ newtype SignedObject = SignedObject Object
 signObject :: Vodozemac.Account -> UserID -> DeviceID -> Object -> IO SignedObject
 signObject account (UserID userId) (DeviceID deviceId) obj = do
     let objStr = LazyByteString.toStrict $ encodeCanonical obj
-    signature <- Vodozemac.ed25519SignatureToBase64 =<< Vodozemac.sign account objStr
+    signature <- Vodozemac.Ed25519Signature.toBase64 =<< Vodozemac.Account.sign account objStr
     let signatures = object [Key.fromText userId .= ed25519]
-        ed25519 = object [("ed25519:" <> Key.fromText deviceId) .= signature]
+        ed25519 = object [("ed25519:" <> Key.fromText deviceId) .= Text.decodeUtf8 signature]
     pure . SignedObject $ KeyMap.insert "signatures" signatures obj
 
 data DeviceKeys = DeviceKeys
     { userId :: UserID
     , deviceId :: DeviceID
-    , curve25519Key :: Text
-    , ed25519Key :: Text
+    , curve25519Key :: ByteString
+    , ed25519Key :: ByteString
     }
 
 instance ToJSON DeviceKeys where
@@ -49,16 +55,16 @@ instance ToJSON DeviceKeys where
             , "device_id" .= toJSON deviceId
             , "keys"
                 .= object
-                    [ ("curve25519:" <> Key.fromText deviceId) .= curve25519Key
-                    , ("ed25519:" <> Key.fromText deviceId) .= ed25519Key
+                    [ ("curve25519:" <> Key.fromText deviceId) .= Text.decodeUtf8 curve25519Key
+                    , ("ed25519:" <> Key.fromText deviceId) .= Text.decodeUtf8 ed25519Key
                     ]
             , "user_id" .= toJSON userId
             ]
 
 data KeyUploadRequest = KeyUploadRequest
     { deviceKeys :: DeviceKeys
-    , fallbackKeyId :: Text
-    , fallbackKey :: Text
+    , fallbackKeyId :: ByteString
+    , fallbackKey :: ByteString
     }
 
 data SignedKeyUploadRequest = SignedKeyUploadRequest
@@ -74,9 +80,10 @@ signKeyUploadRequest :: Vodozemac.Account -> KeyUploadRequest -> IO SignedKeyUpl
 signKeyUploadRequest account KeyUploadRequest{..} = do
     Object deviceKeysObj <- pure $ toJSON deviceKeys
     signedDeviceKeys <- signObject account deviceKeys.userId deviceKeys.deviceId deviceKeysObj
-    signedFallbackKey' <- signObject account deviceKeys.userId deviceKeys.deviceId $
-        KeyMap.fromList [("fallback", toJSON True), ("key", toJSON fallbackKey)]
-    let signedFallbackKey = KeyMap.singleton ("signed_curve25519:" <> Key.fromText fallbackKeyId) (toJSON signedFallbackKey')
+    signedFallbackKey' <-
+        signObject account deviceKeys.userId deviceKeys.deviceId $
+            KeyMap.fromList [("fallback", toJSON True), ("key", toJSON (Text.decodeUtf8 fallbackKey))]
+    let signedFallbackKey = KeyMap.singleton ("signed_curve25519:" <> Key.fromText (Text.decodeUtf8 fallbackKeyId)) (toJSON signedFallbackKey')
     pure SignedKeyUploadRequest{..}
 
 {-
@@ -132,11 +139,11 @@ signKeyUploadRequest account KeyUploadRequest{..} = do
 
 uploadKeys :: ClientSession -> Vodozemac.Account -> UserID -> DeviceID -> MatrixIO ()
 uploadKeys session account userId deviceId = do
-    Just (Vodozemac.FallbackKey fallbackKeyId' fallbackKey') <- Vodozemac.fallbackKey account
-    fallbackKeyId <- Text.pack <$> Vodozemac.keyIdToBase64 fallbackKeyId'
-    fallbackKey <- Text.pack <$> Vodozemac.curve25519PublicKeyToBase64 fallbackKey'
-    curve25519Key <- Text.pack <$> (Vodozemac.curve25519PublicKeyToBase64 . fromJust =<< Vodozemac.curve25519Key account)
-    ed25519Key <- Text.pack <$> (Vodozemac.ed25519PublicKeyToBase64 . fromJust =<< Vodozemac.ed25519Key account)
+    Just (Vodozemac.FallbackKey fallbackKeyId' fallbackKey') <- Vodozemac.Account.fallbackKey account
+    fallbackKeyId <- Vodozemac.KeyId.toBase64 fallbackKeyId'
+    fallbackKey <- Vodozemac.Curve25519PublicKey.toBase64 fallbackKey'
+    curve25519Key <- Vodozemac.Curve25519PublicKey.toBase64 =<< Vodozemac.Account.curve25519Key account
+    ed25519Key <- Vodozemac.Ed25519PublicKey.toBase64 =<< Vodozemac.Account.ed25519Key account
     signedKeys <- signKeyUploadRequest account KeyUploadRequest{deviceKeys = DeviceKeys{..}, ..}
     traceShowM $ encode signedKeys
     request <- mkRequest session True "/_matrix/client/v3/keys/upload"

@@ -2,11 +2,11 @@
   "nodes": {
     "crane": {
       "locked": {
-        "lastModified": 1730060262,
-        "narHash": "sha256-RMgSVkZ9H03sxC+Vh4jxtLTCzSjPq18UWpiM0gq6shQ=",
+        "lastModified": 1730504891,
+        "narHash": "sha256-Fvieht4pai+Wey7terllZAKOj0YsaDP0e88NYs3K/Lo=",
         "owner": "ipetkov",
         "repo": "crane",
-        "rev": "498d9f122c413ee1154e8131ace5a35a80d8fa76",
+        "rev": "8658adcdad49b8f2c6cbf0cc3cb4b4db988f7638",
         "type": "github"
       },
       "original": {
@@ -83,11 +83,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1730500639,
-        "narHash": "sha256-ycg0mdAUSxLYnxtPXSTFZljWHpE8y2KQPxMuZEl3gK0=",
+        "lastModified": 1730586021,
+        "narHash": "sha256-yOWToeU5uE7UAUvbx8F8ukuhJHgZHkbrKHEzXsH286U=",
         "ref": "refs/heads/master",
-        "rev": "436e6b2a1b16a9a98a1aabbb94c98db1831d9b3a",
-        "revCount": 3,
+        "rev": "94a65bdef32e8ec26fafeec0fe25e656d7c950db",
+        "revCount": 5,
         "type": "git",
         "url": "file:///home/ners/Projects/vodozemac-haskell"
       },
