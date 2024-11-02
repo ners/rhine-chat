@@ -10,7 +10,14 @@
       url = "github:turion/rhine";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane.url = "github:ipetkov/crane";
+    matrix-client = {
+      url = "github:ners/matrix-client-haskell";
+      flake = false;
+    };
+    vodozemac = {
+      url = "git+file:///home/ners/Projects/vodozemac-haskell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:
@@ -24,7 +31,7 @@
       );
       sourceFilter = root: with lib.fileset; toSource {
         inherit root;
-        fileset = fileFilter (file: any file.hasExt [ "cabal" "hs" "hsc" "lock" "md" "rs" "toml" ]) root;
+        fileset = fileFilter (file: any file.hasExt [ "cabal" "hs" "hsc" "md" ]) root;
       };
       readDirs = root: attrNames (lib.filterAttrs (_: type: type == "directory") (readDir root));
       readFiles = root: attrNames (lib.filterAttrs (_: type: type == "regular") (readDir root));
@@ -65,21 +72,38 @@
         { }
         pkgs.haskell.packages;
       hpsFor = pkgs: { default = pkgs.haskellPackages; } // ghcsFor pkgs;
+      aesonOverlay = lib.composeManyExtensions [
+        (final: prev: {
+          haskell = prev.haskell // {
+            packageOverrides = lib.composeManyExtensions [
+              prev.haskell.packageOverrides
+              (hfinal: hprev: with prev.haskell.lib.compose; {
+                aeson = doJailbreak hprev.aeson_2_2_3_0;
+                attoparsec-aeson = doJailbreak hprev.attoparsec-aeson_2_2_2_0;
+                matrix-client = hfinal.callCabal2nix "matrix-client" "${inputs.matrix-client}/matrix-client" { };
+                rhine-matrix = hfinal.callCabal2nix "rhine-matrix" ./rhine-matrix { };
+              })
+            ];
+          };
+        })
+      ];
       overlay = lib.composeManyExtensions [
         inputs.rhine.overlays.default
-        (_: prev: let
-          crane = inputs.crane.mkLib prev;
-          src = sourceFilter ./vodozemac;
-          strictDeps = true;
-          cargoArtifacts = crane.buildDepsOnly { inherit src strictDeps; };
-        in {
-          vodozemac_hs = crane.buildPackage { inherit src strictDeps cargoArtifacts; };
-        })
-        (_: prev: {
+        inputs.vodozemac.overlays.default
+        (final: prev: {
           haskell = prev.haskell // {
-            packageOverrides = with prev.haskell.lib.compose; lib.composeManyExtensions [
+            packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
               (cabalProjectOverlay project)
+              (hfinal: hprev: 
+                let
+                  aesonPrev = prev.extend aesonOverlay;
+                  aesonHprev = aesonPrev.haskell.packages."ghc${replaceStrings ["."] [""] prev.ghc.version}";
+                in
+                {
+                  inherit (aesonHprev) rhine-matrix; 
+                }
+              )
             ];
           };
         })
@@ -216,7 +240,9 @@
                   --store bot-store \
                   --credentials bot-credentials.json || true
 
-                matrix-commander --room-create lounge
+                matrix-commander --room-create lounge || true
+
+                matrix-commander --room-invite '#lounge:synapse.test' --user '@bot:synapse.test' || true
 
                 matrix-commander --message "Hello world!"
               '';

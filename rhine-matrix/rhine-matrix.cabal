@@ -64,8 +64,14 @@ executable example
     import:           common
     hs-source-dirs:   example
     main-is:          Main.hs
+    other-modules:
+        RequestRoomKeys
+        UploadKeys
     ghc-options:      -O2 -threaded
     build-depends:
+        aeson >= 2.2,
+        bytestring,
         dhall,
+        http-client,
         rhine-matrix,
         text,

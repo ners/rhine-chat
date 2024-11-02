@@ -15,6 +15,22 @@
         "type": "github"
       }
     },
+    "matrix-client": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1730509407,
+        "narHash": "sha256-JuaiPYDrTcJGLbbdldA+JPb9YqF4cFPMtFHhsWgi3Mo=",
+        "owner": "ners",
+        "repo": "matrix-client-haskell",
+        "rev": "47b42a4db7ac4e64f14fc95f4036c25f29559016",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ners",
+        "repo": "matrix-client-haskell",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1730200266,
@@ -53,9 +69,31 @@
     },
     "root": {
       "inputs": {
-        "crane": "crane",
+        "matrix-client": "matrix-client",
         "nixpkgs": "nixpkgs",
-        "rhine": "rhine"
+        "rhine": "rhine",
+        "vodozemac": "vodozemac"
+      }
+    },
+    "vodozemac": {
+      "inputs": {
+        "crane": "crane",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1730500639,
+        "narHash": "sha256-ycg0mdAUSxLYnxtPXSTFZljWHpE8y2KQPxMuZEl3gK0=",
+        "ref": "refs/heads/master",
+        "rev": "436e6b2a1b16a9a98a1aabbb94c98db1831d9b3a",
+        "revCount": 3,
+        "type": "git",
+        "url": "file:///home/ners/Projects/vodozemac-haskell"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:///home/ners/Projects/vodozemac-haskell"
       }
     }
   },

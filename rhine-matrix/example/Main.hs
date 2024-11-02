@@ -11,6 +11,7 @@ import Dhall (FromDhall, Generic, ToDhall)
 import Dhall qualified
 import FRP.Rhine
 import FRP.Rhine.Matrix
+import UploadKeys (uploadKeys)
 import Network.Matrix.Client
 import Vodozemac qualified
 import Prelude
@@ -29,45 +30,40 @@ data Config = Config
     deriving stock (Generic, Show)
     deriving anyclass (FromDhall, ToDhall)
 
-newtype State = State
+data State = State
     { session :: ClientSession
+    , account :: Vodozemac.Account
+    , userId :: UserID
+    , deviceId :: DeviceID
     }
     deriving stock (Generic)
 
-printEvents :: ClSF IO MatrixClock () ()
-printEvents = absoluteS &&& tagS >>> arrMCl print
+printEvents :: ClSF IO MatrixClock State State
+printEvents = returnA &&& absoluteS &&& tagS >>> arrMCl (\(state, x) -> print x >> pure state)
+
+mainRhine :: State -> MatrixClock -> Rhine IO MatrixClock () ()
+mainRhine initialState matrixClock = feedbackRhine (keepLast initialState) $ snd ^>>@ printEventsRh @>>^ ((),)
+  where
+    printEventsRh = printEvents @@ matrixClock
 
 main :: IO ()
 main = do
-    putStrLn "0"
+    config <- Dhall.inputFile (Dhall.auto @Config) "config.dhall"
+    session <-
+        case config.login of
+            Credentials{..} ->
+                Network.Matrix.Client.login
+                    LoginCredentials
+                        { lUsername = Username username
+                        , lLoginSecret = Password password
+                        , lInitialDeviceDisplayName = InitialDeviceDisplayName <$> deviceName
+                        , lDeviceId = Nothing
+                        , lBaseUrl = config.baseUrl
+                        }
+            SessionToken token -> createSession config.baseUrl (MatrixToken token)
+    Right (userId, deviceId) <- getTokenOwner session
     account <- Vodozemac.newAccount
-    putStrLn "1"
     void $ Vodozemac.generateFallbackKey account
-    putStrLn "2"
-    Just (Vodozemac.FallbackKey keyId _) <- Vodozemac.fallbackKey account
-    putStrLn "3"
-    Vodozemac.keyIdToBase64 keyId >>= putStrLn
-    putStrLn "4"
-    void $ Vodozemac.generateFallbackKey account
-    putStrLn "5"
-    Just (Vodozemac.FallbackKey keyId _) <- Vodozemac.fallbackKey account
-    putStrLn "6"
-    Vodozemac.keyIdToBase64 keyId >>= putStrLn
-    putStrLn "7"
-    Vodozemac.freeAccount account
-
--- config <- Dhall.inputFile (Dhall.auto @Config) "config.dhall"
--- session <-
---    case config.login of
---        Credentials{..} ->
---            Network.Matrix.Client.login
---                LoginCredentials
---                    { lUsername = Username username
---                    , lLoginSecret = Password password
---                    , lInitialDeviceDisplayName = InitialDeviceDisplayName <$> deviceName
---                    , lDeviceId = Nothing
---                    , lBaseUrl = config.baseUrl
---                    }
---        SessionToken token -> createSession config.baseUrl (MatrixToken token)
--- joinRoom session "#lounge:synapse.test" >>= print
--- flow $ printEvents @@ MatrixClock{session, filterId = Nothing, presence = Just Online}
+    uploadKeys session account userId deviceId
+    joinRoom session "#lounge:synapse.test" >>= print
+    flow $ mainRhine State{..} MatrixClock{session, filterId = Nothing, presence = Just Online}

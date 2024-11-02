@@ -9,6 +9,9 @@ import Network.Matrix.Client
     , Presence (..)
     , RoomEvent
     , RoomID
+    , SyncResult (..)
+    , ToDeviceEvent (..)
+    , ToDeviceEvents (..)
     , getTimelines
     , retry
     , srNextBatch
@@ -22,9 +25,14 @@ data MatrixClock = MatrixClock
     , presence :: Maybe Presence
     }
 
+data Event
+    = RoomEvent (RoomID, RoomEvent)
+    | ToDeviceMessage ToDeviceEvent
+    deriving stock (Show)
+
 instance (MonadIO m) => Clock m MatrixClock where
     type Time MatrixClock = UTCTime
-    type Tag MatrixClock = (RoomID, RoomEvent)
+    type Tag MatrixClock = Event
     initClock :: MatrixClock -> RunningClockInit m (Time MatrixClock) (Tag MatrixClock)
     initClock MatrixClock{..} = liftIO do
         let sync' since = liftIO . retry $ sync session filterId since (Just Online) (Just 10_000)
@@ -34,12 +42,13 @@ instance (MonadIO m) => Clock m MatrixClock where
                 timestamp <- constM (liftIO getCurrentTime) -< ()
                 case syncResult of
                     Right result ->
-                        let events =
-                                [ (timestamp, (roomId, event))
+                        let toDeviceEvents = [(timestamp, ToDeviceMessage event) | event <- maybe [] tdeEvents (srToDevice result)]
+                            roomEvents =
+                                [ (timestamp, RoomEvent (roomId, event))
                                 | (roomId, events') <- getTimelines result
                                 , event <- NonEmpty.toList events'
                                 ]
-                         in returnA -< (events, Just result.srNextBatch)
+                         in returnA -< (toDeviceEvents <> roomEvents, Just result.srNextBatch)
                     Left _ -> returnA -< ([], since)
         (clock,) <$> getCurrentTime
 
