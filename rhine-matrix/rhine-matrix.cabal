@@ -65,11 +65,15 @@ executable example
     hs-source-dirs:   example
     main-is:          Main.hs
     other-modules:
+        Decrypt
+        Redact
         RequestRoomKeys
+        SendReaction
         UploadKeys
     ghc-options:      -O2 -threaded
     build-depends:
         aeson >= 2.2,
+        aeson-casing,
         aeson-pretty,
         bytestring,
         containers,
@@ -78,3 +82,4 @@ executable example
         http-client,
         rhine-matrix,
         text,
+        time,

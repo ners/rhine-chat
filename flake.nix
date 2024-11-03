@@ -15,7 +15,7 @@
       flake = false;
     };
     vodozemac = {
-      url = "git+file:///home/ners/Projects/vodozemac-haskell";
+      url = "github:ners/vodozemac-haskell";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
