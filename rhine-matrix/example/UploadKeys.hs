@@ -82,7 +82,10 @@ signKeyUploadRequest account KeyUploadRequest{..} = do
     signedDeviceKeys <- signObject account deviceKeys.userId deviceKeys.deviceId deviceKeysObj
     signedFallbackKey' <-
         signObject account deviceKeys.userId deviceKeys.deviceId $
-            KeyMap.fromList [("fallback", toJSON True), ("key", toJSON (Text.decodeUtf8 fallbackKey))]
+            KeyMap.fromList [("key", toJSON (Text.decodeUtf8 fallbackKey))]
+    -- This should really be `KeyMap.fromList [("fallback", toJSON True), ("key", toJSON (Text.decodeUtf8 fallbackKey))]`
+    -- But ... certain clients seem to not understand that they might get a fallback key from /keys/claim and then start complaining about not being able to verify the signature for the key
+    -- Just leaving out the `fallback` marker seems to be good enough for clients that support it as well, so this should keep us compatible enough.
     let signedFallbackKey = KeyMap.singleton ("signed_curve25519:" <> Key.fromText (Text.decodeUtf8 fallbackKeyId)) (toJSON signedFallbackKey')
     pure SignedKeyUploadRequest{..}
 
